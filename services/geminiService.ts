@@ -1,20 +1,44 @@
-import { GoogleGenAI, Chat, GenerateContentResponse } from "@google/genai";
-import { ChatMode } from "../types";
+import { GoogleGenAI, Chat, GenerateContentResponse, LiveClient } from "@google/genai";
+import { ChatMode, Attachment } from "../types";
+
+// Helper to safely get the API Key in various environments (Vite, Next.js, AI Studio)
+const getApiKey = (): string => {
+  try {
+    // Check standard process.env (AI Studio / Node)
+    if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
+      return process.env.API_KEY;
+    }
+    // Check Vite (for GitHub Pages / StackBlitz)
+    if (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env.VITE_API_KEY) {
+      return (import.meta as any).env.VITE_API_KEY;
+    }
+  } catch (e) {
+    console.warn("Error reading environment variables", e);
+  }
+  return "";
+};
 
 export class GeminiService {
-  private ai: GoogleGenAI;
   private modelName: string = 'gemini-2.5-flash';
   private imageModelName: string = 'imagen-4.0-generate-001';
 
-  constructor() {
-    this.ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  // We do not instantiate GoogleGenAI in the constructor to prevent 
+  // "process is not defined" errors from crashing the app on load.
+  constructor() {}
+
+  private getClient(): GoogleGenAI {
+    const key = getApiKey();
+    if (!key) {
+      console.error("API Key is missing. Please check your .env file or configuration.");
+    }
+    return new GoogleGenAI({ apiKey: key });
   }
 
   /**
    * Creates a new chat session with specific tools enabled.
    */
   createChat(mode: ChatMode): Chat {
-    this.ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = this.getClient();
     
     let systemInstruction = "";
     const tools: any[] = [
@@ -28,7 +52,7 @@ export class GeminiService {
       systemInstruction = "You are a helpful homework assistant. Be neutral, objective, and strictly follow the user's task requirements without adopting any specific persona. Focus on educational assistance.";
     }
 
-    return this.ai.chats.create({
+    return ai.chats.create({
       model: this.modelName,
       config: {
         systemInstruction,
@@ -41,8 +65,9 @@ export class GeminiService {
    * Generates an image from a text prompt.
    */
   async generateImage(prompt: string): Promise<string> {
+    const ai = this.getClient();
     try {
-        const response = await this.ai.models.generateImages({
+        const response = await ai.models.generateImages({
             model: this.imageModelName,
             prompt: prompt,
             config: {
@@ -87,7 +112,8 @@ export class GeminiService {
    * Connects to the Live API.
    */
   async connectLive(config: any, callbacks: any): Promise<any> {
-     return this.ai.live.connect({
+     const ai = this.getClient();
+     return ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-09-2025',
         config: {
             ...config,
